@@ -14,4 +14,4 @@ YYYY-MM-DD_HHMMSS_descricao-do-problema/
 └── metadata.json   → Metadados (datas, iterações, etc.)
 ```
 
-> Gerado automaticamente via [AI Perpetual Lab](https://github.com/Simao-Lopes/web_games/blob/main/README.md)
+> Gerado automaticamente pelo AI Perpetual Lab
