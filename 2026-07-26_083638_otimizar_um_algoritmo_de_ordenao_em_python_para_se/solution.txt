@@ -1,2 +1,36 @@
-[NOVO PROBLEMA] Otimizar um algoritmo de ordenação em Python para ser o mais rápido possível com listas grandes.
-Aguardar pela próxima iteração do Ollama...
+---
+Aqui está uma melhoria de código e uma otimização simples para um exemplo de teste de carga de CPU em Python, usando o módulo `timeit` para medir a performance do código.
+
+Antes:
+```python
+import time
+
+def computationally_expensive_task():
+    result = 0
+    for i in range(1000000):
+        result += i
+    return result
+```
+
+Depois da otimização:
+```python
+import timeit
+
+def computationally_expensive_task_optimized():
+    return sum(range(1000000))
+```
+
+Explicação da melhoria:
+
+1. Em vez de somar os números individualmente em um laço, usamos a função embutida `sum()` do Python que é otimizada internamente para somar uma sequência de inteiros.
+
+2. Isso elimina a necessidade de implementar o cálculo manual e permite que o Python execute mais eficientemente a soma.
+
+3. Além disso, usando o módulo `timeit`, podemos medir com precisão a performance do código antes e depois da otimização:
+
+```python
+print(timeit.timeit(lambda: computationally_expensive_task(), number=10))
+print(timeit.timeit(lambda: computationally_expensive_task_optimized(), number=10))
+```
+
+Este exemplo ilustra como pequenas mudanças no código podem fazer uma grande diferença em termos de performance, especialmente quando a operação é repetida muitas vezes durante um teste de carga de CPU.
