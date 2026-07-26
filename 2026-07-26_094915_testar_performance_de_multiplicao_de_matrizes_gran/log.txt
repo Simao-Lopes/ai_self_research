@@ -1,0 +1,49 @@
+
+
+--- Novo Ciclo (iteração 12) ---
+Problema: Testar performance de multiplicação de matrizes grandes em Python com NumPy vs Python puro
+
+Para testar a performance da multiplicação de matrizes grandes em Python com NumPy vs Python puro, vamos criar dois scripts: um usando apenas Python e outro usando NumPy. Então, faremos medições de tempo para avaliar o desempenho.
+
+Primeiro, crie um script chamado `numpy_matrix_multiply.py`:
+
+```python
+import numpy as np
+from time import time
+
+# Definindo o tamanho das matrizes
+dim = 1000
+
+# Criando as matrizes aleatórias
+A = np.random.rand(dim, dim)
+B = np.random.rand(dim, dim)
+
+start_time = time()
+result = np.dot(A, B)  # Multiplicação de matrizes usando NumPy
+end_time = time()
+
+print(f"NumPy performance: {end_time - start_time:.5f} seconds")
+```
+
+Agora, crie um segundo script chamado `pure_python_matrix_multiply.py`:
+
+```python
+from time import time
+
+# Definindo o tamanho das matrizes
+dim = 1000
+
+# Criando as matrizes aleatórias
+A = [[np.random.rand() for _ in range(dim)] for _ in range(dim)]
+B = [[np.random.rand() for _ in range(dim)] for _ in range(dim)]
+
+start_time = time()
+result = [[sum(A[i][k] * B[k][j] for k in range(dim)) for j in range(dim)] for i in range(dim)]  # Multiplicação de matrizes em Python puro
+end_time = time()
+
+print(f"Pure Python performance: {end_time - start_time:.5f} seconds")
+```
+
+Execute ambos os scripts e anote o tempo de execução. Os resultados podem variar dependendo da sua máquina, mas no geral, você deve observar um desempenho significativamente melhor com NumPy em comparação com Python puro.
+
+Este experimento ilustra como bibliotecas como NumPy podem oferecer ganhos de desempenho ao aproveitar otimizações internas e recursos de baixo nível disponíveis no hardware.
