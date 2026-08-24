@@ -1,140 +1,90 @@
 package main
 import "sync"
 
+const maxK = 256
+
+type score struct {
+	d float32
+	i int
+}
+
 func Search(docs [][]float32, query []float32, k int) []int {
 	n := len(docs)
 	if n == 0 || k <= 0 {
 		return nil
 	}
-	dim := len(query)
-	if dim == 0 {
-		return make([]int, k)
+	if k > maxK {
+		k = maxK
 	}
-	if k > n {
-		k = n
+	q := make([]float64, len(query))
+	for i, v := range query {
+		q[i] = float64(v)
 	}
-
-	maxWorkers := 8
-	nw := maxWorkers * 2
-	if nw < 1 {
-		nw = 1
-	}
-	if nw > n {
-		nw = n
-	}
-	cs := (n + nw - 1) / nw
-
-	type pr struct {
-		v float32
-		i int32
-	}
-
-	out := make([]int, k)
-	scores := make([]float32, k)
-	idxs := make([]int32, k)
-	for i := range out {
-		out[i] = -1
-	}
-
+	r := make([]score, n)
 	var wg sync.WaitGroup
-	for w := 0; w < nw; w++ {
-		lo := w * cs
-		if lo >= n {
-			break
-		}
-		hi := lo + cs
-		if hi > n {
-			hi = n
+	chunk := (n + 15) / 16
+	start := 0
+	for s := 0; s < n; s += chunk {
+		e := s + chunk
+		if e > n {
+			e = n
 		}
 		wg.Add(1)
-		go func(lo, hi int) {
+		go func(a, b int) {
 			defer wg.Done()
-
-			localScores := make([]float32, k)
-			localIdxs := make([]int32, k)
-			for i := range localScores {
-				localScores[i] = -1e30
-				localIdxs[i] = -1
-			}
-
-			for r := lo; r < hi; r++ {
-				doc := docs[r]
-				if len(doc) != dim {
+			base := a * len(query)
+			for i := a; i < b; i++ {
+				d := docs[i]
+				if d == nil || len(d) != len(q) {
 					continue
 				}
-				s := float32(0)
-				_ = doc[:dim]
-				for j := 0; j < dim; j += 8 {
-					e := dim - j
-					var a0, a1, a2, a3, a4, a5, a6, a7 float32
-					if e >= 8 {
-						a0 = doc[j+0] * query[j+0]
-						a1 = doc[j+1] * query[j+1]
-						a2 = doc[j+2] * query[j+2]
-						a3 = doc[j+3] * query[j+3]
-						a4 = doc[j+4] * query[j+4]
-						a5 = doc[j+5] * query[j+5]
-						a6 = doc[j+6] * query[j+6]
-						a7 = doc[j+7] * query[j+7]
-					} else {
-						for m := 0; m < e; m++ {
-							switch m {
-							case 0:
-								a0 = doc[j+m] * query[j+m]
-							case 1:
-								a1 = doc[j+m] * query[j+m]
-							case 2:
-								a2 = doc[j+m] * query[j+m]
-							case 3:
-								a3 = doc[j+m] * query[j+m]
-							case 4:
-								a4 = doc[j+m] * query[j+m]
-							case 5:
-								a5 = doc[j+m] * query[j+m]
-							case 6:
-								a6 = doc[j+m] * query[j+m]
-							}
-						}
-					}
-					s += (a0 + a1) + (a2 + a3) + (a4 + a5) + (a6 + a7)
+				var acc float64 = 0
+				p := base + (i-a)*len(query)
+				for j, v := range q {
+					acc += float64(d[j]) * v
 				}
-
-				pos := k - 1
-				for pos > 0 && s > localScores[pos-1] {
-					localScores[pos], localIdxs[pos] = localScores[pos-1], localIdxs[pos-1]
-					pos--
-				}
-				if s >= localScores[0] || k == n {
-					localScores[pos] = s
-					localIdxs[pos] = int32(r)
-				}
+				r[i] = score{d: float32(acc), i: i}
+				_ = p
 			}
-
-			for i := 0; i < k; i++ {
-				s := localScores[i]
-				if s <= -1e29 && localIdxs[i] == -1 {
-					continue
-				}
-				pos := k - 1
-				for pos > 0 && s > scores[pos-1] {
-					scores[pos], idxs[pos] = scores[pos-1], idxs[pos-1]
-					pos--
-				}
-				if s >= scores[0] || k == n {
-					scores[pos] = s
-					idxs[pos] = localIdxs[i]
-				}
-			}
-		}(lo, hi)
+		}(start, e)
+		start = e
 	}
 	wg.Wait()
-
-	for i := 0; i < k; i++ {
-		if idxs[i] >= 0 && idxs[i] < int32(n) {
-			out[i] = int(idxs[i])
-		} else {
-			break
+	top := make([]score, k)
+	copy(top, r[:k])
+	siftDown(top, 0)
+	for i := k; i < n; i++ {
+		if r[i].d > top[0].d {
+			top[0] = r[i]
+			siftDown(top, 0)
 		}
 	}
-	return out[:k]
+	out := make([]int, k)
+	for i, s := range top {
+		out[k-1-i] = s.i
+	}
+	return out
+}
+
+func siftDown(h []score, i int) {
+	n := len(h)
+	v := h[i]
+	for {
+		l := 2*i + 1
+		if l >= n {
+			break
+		}
+		m := l
+		r := l + 1
+		if r < n && h[r].d < h[l].d {
+			m = r
+		}
+		if v.d <= h[m].d {
+			h[i] = v
+			return
+		}
+		h[i] = h[m]
+		i = m
+	}
+	h[i] = v
 }
