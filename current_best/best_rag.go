@@ -1,163 +1,140 @@
 package main
 import "sync"
 
-func dot32(a, b []float32) float32 {
-	var s float32
-	for i := range a {
-		s += a[i] * b[i]
-	}
-	return s
-}
-
 func Search(docs [][]float32, query []float32, k int) []int {
 	n := len(docs)
 	if n == 0 || k <= 0 {
 		return nil
 	}
+	dim := len(query)
+	if dim == 0 {
+		return make([]int, k)
+	}
 	if k > n {
 		k = n
 	}
 
-	numGoroutines := 4
-	chunkSize := (n + numGoroutines - 1) / numGoroutines
+	maxWorkers := 8
+	nw := maxWorkers * 2
+	if nw < 1 {
+		nw = 1
+	}
+	if nw > n {
+		nw = n
+	}
+	cs := (n + nw - 1) / nw
 
-	type partial struct{ idx int }
+	type pr struct {
+		v float32
+		i int32
+	}
+
+	out := make([]int, k)
+	scores := make([]float32, k)
+	idxs := make([]int32, k)
+	for i := range out {
+		out[i] = -1
+	}
+
 	var wg sync.WaitGroup
-	results := make([][]int, numGoroutines)
-	scores := make([][]float32, numGoroutines)
-
-	for g := 0; g < numGoroutines; g++ {
+	for w := 0; w < nw; w++ {
+		lo := w * cs
+		if lo >= n {
+			break
+		}
+		hi := lo + cs
+		if hi > n {
+			hi = n
+		}
 		wg.Add(1)
-		go func(g int) {
+		go func(lo, hi int) {
 			defer wg.Done()
-			start := g * chunkSize
-			end := start + chunkSize
-			if end > n {
-				end = n
+
+			localScores := make([]float32, k)
+			localIdxs := make([]int32, k)
+			for i := range localScores {
+				localScores[i] = -1e30
+				localIdxs[i] = -1
 			}
-			localIdx := make([]int, 0, end-start)
-			localScores := make([]float32, 0, end-start)
-			for i := start; i < end; i++ {
-				d := docs[i]
-				if len(d) == len(query) {
-					var s float32
-					for j := range query {
-						s += d[j] * query[j]
+
+			for r := lo; r < hi; r++ {
+				doc := docs[r]
+				if len(doc) != dim {
+					continue
+				}
+				s := float32(0)
+				_ = doc[:dim]
+				for j := 0; j < dim; j += 8 {
+					e := dim - j
+					var a0, a1, a2, a3, a4, a5, a6, a7 float32
+					if e >= 8 {
+						a0 = doc[j+0] * query[j+0]
+						a1 = doc[j+1] * query[j+1]
+						a2 = doc[j+2] * query[j+2]
+						a3 = doc[j+3] * query[j+3]
+						a4 = doc[j+4] * query[j+4]
+						a5 = doc[j+5] * query[j+5]
+						a6 = doc[j+6] * query[j+6]
+						a7 = doc[j+7] * query[j+7]
+					} else {
+						for m := 0; m < e; m++ {
+							switch m {
+							case 0:
+								a0 = doc[j+m] * query[j+m]
+							case 1:
+								a1 = doc[j+m] * query[j+m]
+							case 2:
+								a2 = doc[j+m] * query[j+m]
+							case 3:
+								a3 = doc[j+m] * query[j+m]
+							case 4:
+								a4 = doc[j+m] * query[j+m]
+							case 5:
+								a5 = doc[j+m] * query[j+m]
+							case 6:
+								a6 = doc[j+m] * query[j+m]
+							}
+						}
 					}
-					localScores = append(localScores, s)
-					localIdx = append(localIdx, i)
+					s += (a0 + a1) + (a2 + a3) + (a4 + a5) + (a6 + a7)
+				}
+
+				pos := k - 1
+				for pos > 0 && s > localScores[pos-1] {
+					localScores[pos], localIdxs[pos] = localScores[pos-1], localIdxs[pos-1]
+					pos--
+				}
+				if s >= localScores[0] || k == n {
+					localScores[pos] = s
+					localIdxs[pos] = int32(r)
 				}
 			}
-			results[g] = localIdx
-			scores[g] = localScores
-		}(g)
+
+			for i := 0; i < k; i++ {
+				s := localScores[i]
+				if s <= -1e29 && localIdxs[i] == -1 {
+					continue
+				}
+				pos := k - 1
+				for pos > 0 && s > scores[pos-1] {
+					scores[pos], idxs[pos] = scores[pos-1], idxs[pos-1]
+					pos--
+				}
+				if s >= scores[0] || k == n {
+					scores[pos] = s
+					idxs[pos] = localIdxs[i]
+				}
+			}
+		}(lo, hi)
 	}
 	wg.Wait()
 
-	var finalIdx []int
-	var finalScores []float32
-	for g := 0; g < numGoroutines; g++ {
-		if len(results[g]) > 0 {
-			finalIdx = append(finalIdx, results[g]...)
-			finalScores = append(finalScores, scores[g]...)
-		}
-	}
-
-	m := len(finalIdx)
-	if m <= k {
-		out := make([]int, m)
-		copy(out, finalIdx)
-		return out
-	}
-
-	type pair struct {
-		s   float32
-		idx int
-	}
-	hp := make([]pair, 0, k+1)
-	push := func(s float32, i int) {
-		if len(hp) < k {
-			hp = append(hp, pair{s, i})
-			return
-		}
-		if s > hp[0].s {
-			hp[0] = pair{s, i}
-			pos := 1
-			for pos < len(hp) {
-				lc, rc := pos*2+1, pos*2+2
-				midx := pos
-				if lc < len(hp) && hp[lc].s > hp[midx].s {
-					midx = lc
-				}
-				if rc < len(hp) && hp[rc].s > hp[midx].s {
-					midx = rc
-				}
-				if midx == pos {
-					break
-				}
-				hp[pos], hp[midx] = hp[midx], hp[pos]
-				pos = midx
-			}
-		}
-	}
-
 	for i := 0; i < k; i++ {
-		push(finalScores[i], finalIdx[i])
-	}
-	if len(hp) == k {
-		i := (len(hp) - 1) / 2
-		for i >= 0 {
-			lc, rc := i*2+1, i*2+2
-			midx := i
-			if lc < len(hp) && hp[lc].s > hp[midx].s {
-				midx = lc
-			}
-			if rc < len(hp) && hp[rc].s > hp[midx].s {
-				midx = rc
-			}
-			if midx == i {
-				break
-			}
-			hp[i], hp[midx] = hp[midx], hp[i]
-			i = midx
-		}
-		for i := k; i < m; i++ {
-			push(finalScores[i], finalIdx[i])
-		}
-	}
-
-	out := make([]int, 0, len(hp))
-	tmp := make([]pair, len(hp))
-	copy(tmp, hp)
-	for len(tmp) > 0 {
-		top := tmp[0]
-		out = append(out, top.idx)
-		last := tmp[len(tmp)-1]
-		tmp = tmp[:len(tmp)-1]
-		if len(tmp) == 0 {
+		if idxs[i] >= 0 && idxs[i] < int32(n) {
+			out[i] = int(idxs[i])
+		} else {
 			break
 		}
-		tmp[0] = last
-		pos := 1
-		for pos < len(tmp) {
-			lc, rc := pos*2+1, pos*2+2
-			midx := pos
-			if lc < len(tmp) && tmp[lc].s > tmp[midx].s {
-				midx = lc
-			}
-			if rc < len(tmp) && tmp[rc].s > tmp[midx].s {
-				midx = rc
-			}
-			if midx == pos {
-				break
-			}
-			tmp[pos], tmp[midx] = tmp[midx], tmp[pos]
-			pos = midx
-		}
 	}
-
-	for i := 0; i < len(out)/2; i++ {
-		out[i], out[len(out)-1-i] = out[len(out)-1-i], out[i]
-	}
-	return out
+	return out[:k]
 }
