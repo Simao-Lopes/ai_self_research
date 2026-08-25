@@ -1,3 +1,4 @@
 {"ts": 1787534376.1057086, "latency_us": 91112, "recall_pct": 10.0, "problem": "Develop a high-performance, concurrent RAG vector search engine in Go for 100,000 1536-dimensional float32 vectors on a "}
 {"ts": 1787583125.4842396, "latency_us": 87660, "recall_pct": 38.12, "problem": "Develop a high-performance, concurrent RAG vector search engine in Go for 100,000 1536-dimensional float32 vectors on a "}
 {"ts": 1787596164.639557, "latency_us": 78984, "recall_pct": 100.0, "problem": "Develop a high-performance, concurrent RAG vector search engine in Go for 100,000 1536-dimensional float32 vectors on a "}
+{"ts": 1787675026.794673, "latency_us": 27501, "recall_pct": 0.0, "problem": "Develop a high-performance, concurrent RAG vector search engine in Go for 100,000 1536-dimensional float32 vectors on a "}
