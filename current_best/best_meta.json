@@ -1,6 +1,6 @@
 {
-  "latency_us": 7712,
+  "latency_us": 3158,
   "recall_pct": 0.0,
-  "ts": 1787681229.0433018,
+  "ts": 1788499066.076887,
   "problem": "Develop a high-performance, concurrent RAG vector search engine in Go for 100,000 1536-dimensional float32 vectors on a "
 }
